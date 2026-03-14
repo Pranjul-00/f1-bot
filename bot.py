@@ -161,34 +161,37 @@ async def standings_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     if query.data == "standings_drivers":
         data = await fetch_standings("driverStandings")
-        if not data:
+        if not data or 'DriverStandings' not in data:
             await query.edit_message_text("Sorry, I couldn't fetch the driver standings right now.")
             return
         
         standings = data['DriverStandings']
-        text = f"🏆 *Driver Standings ({data['season']})*\n\n"
+        text = f"🏆 *Driver Standings ({data.get('season', 'Current')})*\n\n"
         for entry in standings[:15]: # Show top 15
-            pos = entry['position']
-            name = f"{entry['Driver']['givenName']} {entry['Driver']['familyName']}"
-            pts = entry['points']
-            team = entry['Constructors'][0]['name']
+            pos = entry.get('position', '?')
+            driver = entry.get('Driver', {})
+            name = f"{driver.get('givenName', '')} {driver.get('familyName', '')}"
+            pts = entry.get('points', '0')
+            constructors = entry.get('Constructors', [{}])
+            team = constructors[0].get('name', 'Unknown')
             text += f"{pos}. *{name}* - {pts} pts ({team})\n"
         
         await query.edit_message_text(text=text, parse_mode='Markdown')
 
     elif query.data == "standings_constructors":
         data = await fetch_standings("constructorStandings")
-        if not data:
+        if not data or 'ConstructorStandings' not in data:
             await query.edit_message_text("Sorry, I couldn't fetch the constructor standings right now.")
             return
         
         standings = data['ConstructorStandings']
-        text = f"🏁 *Constructor Standings ({data['season']})*\n\n"
+        text = f"🏁 *Constructor Standings ({data.get('season', 'Current')})*\n\n"
         for entry in standings:
-            pos = entry['position']
-            name = entry['Constructor']['name']
-            pts = entry['points']
-            wins = entry['wins']
+            pos = entry.get('position', '?')
+            constructor = entry.get('Constructor', {})
+            name = constructor.get('name', 'Unknown')
+            pts = entry.get('points', '0')
+            wins = entry.get('wins', '0')
             text += f"{pos}. *{name}* - {pts} pts ({wins} wins)\n"
         
         await query.edit_message_text(text=text, parse_mode='Markdown')
