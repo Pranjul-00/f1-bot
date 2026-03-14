@@ -1,46 +1,52 @@
-# F1 Telegram Bot
+# F1 Telegram Bot 🏎️🤖
 
-A personal Telegram bot to keep track of Formula 1 race schedules, standings, and telemetry data on the go. Powered by Python, `python-telegram-bot`, and the `fastf1` library.
+A personal Telegram bot to keep track of Formula 1 race schedules, standings, results, and telemetry data on the go.
 
-## Features (Planned)
-- **/next**: Get upcoming race schedules converted to local time.
-- **/standings**: View current driver and constructor championship points.
-- **/compare [driver1] [driver2]**: Fetch telemetry comparisons (Speed vs Distance) for specific drivers.
-- **Race Alerts**: Proactive notifications before qualifying or the race starts.
+## Features
+- **🏎️ Next Race**: Get the upcoming race weekend schedule converted to your local time with a countdown to the next session.
+- **🏎️ Latest Results**: View the top 10 finishers of the most recent Grand Prix.
+- **🏆 Standings**: View current Driver and Constructor championship points.
+- **🌍 Smart Timezone**: Interactive menu to set your timezone by country (including multi-zone support for USA/Australia/Canada) or fuzzy search by city.
+- **📱 Tap Interface**: Persistent reply keyboard menu for easy navigation without typing.
+
+## Planned Features
+- **📊 Telemetry Comparison**: Fetch speed vs distance graphs for driver comparisons using FastF1.
+- **🔔 Race Alerts**: Proactive notifications before sessions start.
 
 ## Tech Stack
 - **Python 3.12**
-- **python-telegram-bot**: To handle the Telegram API interactions.
-- **FastF1**: For fetching and plotting F1 telemetry and timing data.
-- **python-dotenv**: For securely managing API tokens.
+- **python-telegram-bot**: Telegram API integration.
+- **FastF1**: Deep F1 data and telemetry.
+- **Jolpica API**: Race results and standings (Ergast successor).
+- **RapidFuzz**: Fuzzy matching for timezone searching.
 
 ## Setup Instructions
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/YOUR_USERNAME/YOUR_REPO_NAME.git
+   git clone https://github.com/YOUR_USERNAME/f1-bot.git
    cd f1-bot
    ```
 
-2. **Create and activate a virtual environment:**
+2. **Setup Virtual Environment:**
    ```bash
    python3 -m venv venv
    source venv/bin/activate
-   ```
-
-3. **Install dependencies:**
-   ```bash
    pip install -r requirements.txt
    ```
 
-4. **Set up Environment Variables:**
-   - Create a file named `.env` in the root directory.
-   - Add your Telegram Bot Token (obtained from BotFather):
+3. **Configure Environment:**
+   - Create a `.env` file:
      ```env
-     TELEGRAM_BOT_TOKEN=your_token_here
+     TELEGRAM_BOT_TOKEN=your_bot_token_here
      ```
 
-5. **Run the bot:**
+4. **Run the Bot:**
    ```bash
    python bot.py
    ```
+
+## Security & Safety
+- **No Secrets**: API tokens are managed via `.env` and excluded from git.
+- **User Privacy**: Timezone preferences are stored locally in `user_prefs.json` (excluded from git).
+- **Caching**: Uses `fastf1_cache/` to reduce API load.
