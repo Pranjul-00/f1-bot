@@ -3,6 +3,7 @@ import logging
 import fastf1
 import datetime
 import json
+import requests
 from zoneinfo import ZoneInfo, available_timezones
 from rapidfuzz import process, utils
 from dotenv import load_dotenv
@@ -126,11 +127,71 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text == '🏎️ Next Race':
         await next_race(update, context)
     elif text == '🏆 Standings':
-        await context.bot.send_message(chat_id=update.effective_chat.id, text="Standings feature is coming soon! 🏆")
+        await standings_menu(update, context)
     elif text == '🌍 Set Timezone':
         await set_timezone(update, context)
     elif text == 'ℹ️ Help':
         await help_command(update, context)
+
+async def standings_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show buttons to choose between Driver and Constructor standings."""
+    keyboard = [
+        [InlineKeyboardButton("🏎️ Driver Standings", callback_data="standings_drivers")],
+        [InlineKeyboardButton("🏁 Team Standings", callback_data="standings_constructors")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text("Which standings would you like to see?", reply_markup=reply_markup)
+
+async def fetch_standings(standings_type: str):
+    """Fetch standings from Jolpica API."""
+    url = f"https://api.jolpi.ca/ergast/f1/current/{standings_type}.json"
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        return data['MRData']['StandingsTable']['StandingsLists'][0]
+    except Exception as e:
+        logging.error(f"Error fetching standings: {e}")
+        return None
+
+async def standings_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle standings selection."""
+    query = update.callback_query
+    await query.answer()
+    
+    if query.data == "standings_drivers":
+        data = await fetch_standings("driverStandings")
+        if not data:
+            await query.edit_message_text("Sorry, I couldn't fetch the driver standings right now.")
+            return
+        
+        standings = data['DriverStandings']
+        text = f"🏆 *Driver Standings ({data['season']})*\n\n"
+        for entry in standings[:15]: # Show top 15
+            pos = entry['position']
+            name = f"{entry['Driver']['givenName']} {entry['Driver']['familyName']}"
+            pts = entry['points']
+            team = entry['Constructors'][0]['name']
+            text += f"{pos}. *{name}* - {pts} pts ({team})\n"
+        
+        await query.edit_message_text(text=text, parse_mode='Markdown')
+
+    elif query.data == "standings_constructors":
+        data = await fetch_standings("constructorStandings")
+        if not data:
+            await query.edit_message_text("Sorry, I couldn't fetch the constructor standings right now.")
+            return
+        
+        standings = data['ConstructorStandings']
+        text = f"🏁 *Constructor Standings ({data['season']})*\n\n"
+        for entry in standings:
+            pos = entry['position']
+            name = entry['Constructor']['name']
+            pts = entry['points']
+            wins = entry['wins']
+            text += f"{pos}. *{name}* - {pts} pts ({wins} wins)\n"
+        
+        await query.edit_message_text(text=text, parse_mode='Markdown')
 
 async def set_timezone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Search for a timezone or show the major F1 countries menu."""
@@ -180,7 +241,7 @@ async def set_timezone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def timezone_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle country and timezone selections."""
+    """Handle region and timezone selections."""
     query = update.callback_query
     await query.answer()
     
@@ -365,6 +426,8 @@ if __name__ == '__main__':
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("next", next_race))
     app.add_handler(CommandHandler("settimezone", set_timezone))
+    app.add_handler(CommandHandler("standings", standings_menu))
+    app.add_handler(CallbackQueryHandler(standings_callback, pattern="^standings_"))
     app.add_handler(CallbackQueryHandler(timezone_callback))
     app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
 
