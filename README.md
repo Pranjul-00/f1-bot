@@ -44,9 +44,3 @@ A personal Telegram bot to keep track of Formula 1 race schedules, standings, an
    ```bash
    python bot.py
    ```
-
-## Development Progress
-- [x] Initialized project structure and repository.
-- [ ] Created basic Telegram bot structure.
-- [ ] Integrated FastF1 for basic commands.
-- [ ] Deployed bot to a server (Optional).
