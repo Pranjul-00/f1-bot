@@ -3,3 +3,4 @@ __pycache__/
 .env
 *.log
 fastf1_cache/
+debug_next.py\nuser_prefs.json
