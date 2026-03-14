@@ -128,12 +128,47 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     if text == '🏎️ Next Race':
         await next_race(update, context)
+    elif text == '🏎️ Latest Results':
+        await latest_results(update, context)
     elif text == '🏆 Standings':
         await standings_menu(update, context)
     elif text == '🌍 Set Timezone':
         await set_timezone(update, context)
     elif text == 'ℹ️ Help':
         await help_command(update, context)
+
+async def latest_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Fetch and send the results of the last Grand Prix."""
+    chat_id = update.effective_chat.id
+    await context.bot.send_message(chat_id=chat_id, text="Fetching latest race results... 🏎️")
+    
+    url = "https://api.jolpi.ca/ergast/f1/current/last/results.json"
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        race = data['MRData']['RaceTable']['Races'][0]
+        
+        race_name = race.get('raceName', 'Grand Prix')
+        season = race.get('season', '')
+        results = race.get('Results', [])
+        
+        text = f"🏁 *Results: {season} {race_name}*\n\n"
+        
+        for res in results[:10]: # Top 10
+            pos = res.get('position', '?')
+            driver = res.get('Driver', {})
+            name = f"{driver.get('givenName', '')} {driver.get('familyName', '')}"
+            team = res.get('Constructor', {}).get('name', 'Unknown')
+            pts = res.get('points', '0')
+            
+            text += f"{pos}. *{name}* - {pts} pts ({team})\n"
+            
+        await context.bot.send_message(chat_id=chat_id, text=text, parse_mode='Markdown')
+        
+    except Exception as e:
+        logging.error(f"Error in latest_results: {e}")
+        await context.bot.send_message(chat_id=chat_id, text="Sorry, I couldn't fetch the latest results.")
 
 async def standings_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show buttons to choose between Driver and Constructor standings."""
@@ -412,6 +447,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Available commands:\n"
         "/start - Show the main menu keyboard\n"
         "/next - Get upcoming race schedule\n"
+        "/results - View results of the last Grand Prix\n"
         "/settimezone - Pick or search for your timezone\n"
         "/standings - View championship standings\n\n"
         "You can also use the buttons below your message bar for quick access!"
@@ -430,6 +466,7 @@ if __name__ == '__main__':
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("next", next_race))
+    app.add_handler(CommandHandler("results", latest_results))
     app.add_handler(CommandHandler("settimezone", set_timezone))
     app.add_handler(CommandHandler("standings", standings_menu))
     app.add_handler(CallbackQueryHandler(standings_callback, pattern="^standings_"))
