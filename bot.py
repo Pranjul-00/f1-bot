@@ -43,7 +43,50 @@ CLEAN_TZS = sorted([
     and "/" in tz  # Keep only Continent/City format
 ])
 
-REGIONS = sorted(list(set([tz.split("/")[0] for tz in CLEAN_TZS])))
+# Major F1 Countries and their primary timezones
+MAJOR_F1_COUNTRIES = {
+    "🇬🇧 UK": "Europe/London",
+    "🇮🇹 Italy": "Europe/Rome",
+    "🇧🇷 Brazil": "America/Sao_Paulo",
+    "🇯🇵 Japan": "Asia/Tokyo",
+    "🇦🇪 UAE": "Asia/Dubai",
+    "🇸🇦 Saudi Arabia": "Asia/Riyadh",
+    "🇸🇬 Singapore": "Asia/Singapore",
+    "🇧🇭 Bahrain": "Asia/Bahrain",
+    "🇦🇺 Australia": "MULTIPLE_AU",
+    "🇺🇸 USA": "MULTIPLE_US",
+    "🇨🇦 Canada": "MULTIPLE_CA",
+    "🇲🇽 Mexico": "America/Mexico_City",
+    "🇲🇨 Monaco": "Europe/Monaco",
+    "🇪🇸 Spain": "Europe/Madrid",
+    "🇭🇺 Hungary": "Europe/Budapest",
+    "🇧🇪 Belgium": "Europe/Brussels",
+    "🇳🇱 Netherlands": "Europe/Amsterdam",
+    "🇦🇹 Austria": "Europe/Vienna",
+    "🇦🇿 Azerbaijan": "Asia/Baku",
+    "🇶🇦 Qatar": "Asia/Qatar"
+}
+
+# Sub-timezones for countries with multiple zones
+SUB_TZS = {
+    "MULTIPLE_AU": [
+        ("Melbourne/Sydney", "Australia/Melbourne"),
+        ("Perth", "Australia/Perth"),
+        ("Brisbane", "Australia/Brisbane"),
+        ("Adelaide", "Australia/Adelaide")
+    ],
+    "MULTIPLE_US": [
+        ("Eastern (NY/Miami)", "America/New_York"),
+        ("Central (Austin/Chicago)", "America/Chicago"),
+        ("Mountain (Denver)", "America/Denver"),
+        ("Pacific (Vegas/LA)", "America/Los_Angeles")
+    ],
+    "MULTIPLE_CA": [
+        ("Eastern (Toronto)", "America/Toronto"),
+        ("Western (Vancouver)", "America/Vancouver"),
+        ("Atlantic (Halifax)", "America/Halifax")
+    ]
+}
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send a message when the command /start is issued."""
@@ -58,7 +101,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id=update.effective_chat.id, text=welcome_message)
 
 async def set_timezone(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Search for a timezone or show the region selection menu."""
+    """Search for a timezone or show the major F1 countries menu."""
     if context.args:
         # User is searching for a timezone (e.g., /settimezone London)
         search_query = " ".join(context.args)
@@ -73,7 +116,6 @@ async def set_timezone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         keyboard = []
         for match_str, score, index in matches:
-            # Match is (string, score, index)
             keyboard.append([InlineKeyboardButton(match_str, callback_data=f"tz_{match_str}")])
         
         keyboard.append([InlineKeyboardButton("❌ Cancel", callback_data="cancel_tz")])
@@ -85,23 +127,26 @@ async def set_timezone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # No arguments? Show the region menu
+    # No arguments? Show the major F1 countries menu
     keyboard = []
-    for i in range(0, len(REGIONS), 2):
-        row = [InlineKeyboardButton(REGIONS[i], callback_data=f"region_{REGIONS[i]}")]
-        if i + 1 < len(REGIONS):
-            row.append(InlineKeyboardButton(REGIONS[i+1], callback_data=f"region_{REGIONS[i+1]}"))
+    countries = list(MAJOR_F1_COUNTRIES.keys())
+    for i in range(0, len(countries), 2):
+        row = [InlineKeyboardButton(countries[i], callback_data=f"country_{countries[i]}")]
+        if i + 1 < len(countries):
+            row.append(InlineKeyboardButton(countries[i+1], callback_data=f"country_{countries[i+1]}"))
         keyboard.append(row)
+    
+    keyboard.append([InlineKeyboardButton("🌐 Other (Regions List)", callback_data="back_to_regions")])
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(
-        "Please select your region or type `/settimezone YourCity` to search:", 
+        "Please select your country or type `/settimezone CityName` to search:", 
         reply_markup=reply_markup,
         parse_mode='Markdown'
     )
 
 async def timezone_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle region and timezone selections."""
+    """Handle country and timezone selections."""
     query = update.callback_query
     await query.answer()
     
@@ -111,42 +156,64 @@ async def timezone_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("Timezone selection cancelled.")
         return
 
-    if data.startswith("region_"):
-        region = data.split("_")[1]
+    if data.startswith("country_"):
+        country_name = data.split("_")[1]
+        tz_value = MAJOR_F1_COUNTRIES[country_name]
         
-        # Find timezones in this region
-        tzs = sorted([tz for tz in CLEAN_TZS if tz.startswith(region + "/")])
-        
+        if tz_value.startswith("MULTIPLE_"):
+            # Show sub-timezone options for this country
+            options = SUB_TZS[tz_value]
+            keyboard = []
+            for display_name, actual_tz in options:
+                keyboard.append([InlineKeyboardButton(display_name, callback_data=f"tz_{actual_tz}")])
+            keyboard.append([InlineKeyboardButton("⬅️ Back to Countries", callback_data="back_to_countries")])
+            
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.edit_message_text(f"Select your region in {country_name}:", reply_markup=reply_markup)
+        else:
+            # Single timezone country, save it immediately
+            await finalize_timezone(update, tz_value)
+
+    elif data == "back_to_countries":
         keyboard = []
-        limit = 30 # Show more cities now
+        countries = list(MAJOR_F1_COUNTRIES.keys())
+        for i in range(0, len(countries), 2):
+            row = [InlineKeyboardButton(countries[i], callback_data=f"country_{countries[i]}")]
+            if i + 1 < len(countries):
+                row.append(InlineKeyboardButton(countries[i+1], callback_data=f"country_{countries[i+1]}"))
+            keyboard.append(row)
+        keyboard.append([InlineKeyboardButton("🌐 Other (Regions List)", callback_data="back_to_regions")])
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text("Please select your country or search with `/settimezone City`:", reply_markup=reply_markup, parse_mode='Markdown')
+
+    elif data == "back_to_regions":
+        # Fallback to the old region-based list
+        regions = sorted(list(set([tz.split("/")[0] for tz in CLEAN_TZS])))
+        keyboard = []
+        for i in range(0, len(regions), 2):
+            row = [InlineKeyboardButton(regions[i], callback_data=f"region_{regions[i]}")]
+            if i + 1 < len(regions):
+                row.append(InlineKeyboardButton(regions[i+1], callback_data=f"region_{regions[i+1]}"))
+            keyboard.append(row)
+        keyboard.append([InlineKeyboardButton("⬅️ Back to Countries", callback_data="back_to_countries")])
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text("Select your global region:", reply_markup=reply_markup)
+
+    elif data.startswith("region_"):
+        region = data.split("_")[1]
+        tzs = sorted([tz for tz in CLEAN_TZS if tz.startswith(region + "/")])
+        keyboard = []
+        limit = 20
         for i in range(0, min(len(tzs), limit), 2):
-            # Display name is just the city (everything after the first slash)
             display_name = tzs[i].split("/", 1)[1].replace("_", " ")
             row = [InlineKeyboardButton(display_name, callback_data=f"tz_{tzs[i]}")]
-            
             if i + 1 < len(tzs) and i + 1 < limit:
                 display_name_2 = tzs[i+1].split("/", 1)[1].replace("_", " ")
                 row.append(InlineKeyboardButton(display_name_2, callback_data=f"tz_{tzs[i+1]}"))
             keyboard.append(row)
-        
         keyboard.append([InlineKeyboardButton("⬅️ Back to Regions", callback_data="back_to_regions")])
-        
         reply_markup = InlineKeyboardMarkup(keyboard)
-        text = f"Select your city in {region}:"
-        if len(tzs) > limit:
-            text += f"\n(Showing top {limit}. If yours is missing, try `/settimezone CityName`)"
-            
-        await query.edit_message_text(text=text, reply_markup=reply_markup)
-
-    elif data == "back_to_regions":
-        keyboard = []
-        for i in range(0, len(REGIONS), 2):
-            row = [InlineKeyboardButton(REGIONS[i], callback_data=f"region_{REGIONS[i]}")]
-            if i + 1 < len(REGIONS):
-                row.append(InlineKeyboardButton(REGIONS[i+1], callback_data=f"region_{REGIONS[i+1]}"))
-            keyboard.append(row)
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.edit_message_text("Please select your region or search with `/settimezone City`:", reply_markup=reply_markup, parse_mode='Markdown')
+        await query.edit_message_text(f"Select your city in {region}:", reply_markup=reply_markup)
 
     elif data.startswith("tz_"):
         tz_name = data.split("_", 1)[1]
@@ -160,7 +227,7 @@ async def finalize_timezone(update: Update, tz_name: str):
     prefs[user_id] = {'timezone': tz_name}
     save_prefs(prefs)
     
-    await query.edit_message_text(text=f"✅ Timezone set to *{tz_name}*. Your `/next` results will now be in 12h format and localized!", parse_mode='Markdown')
+    await query.edit_message_text(text=f"✅ Timezone set to *{tz_name}*. Your `/next` results will now be localized!", parse_mode='Markdown')
 
 async def get_countdown(target_time):
     """Calculate time remaining until the target time."""
@@ -256,7 +323,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Available commands:\n"
         "/start - Start the bot\n"
         "/next - Get upcoming race schedule with local times and countdown\n"
-        "/settimezone - Search for your city (e.g., `/settimezone London`) or pick from a list\n"
+        "/settimezone - Search for your city (e.g., `/settimezone London`) or pick a country from the list\n"
         "/help - Show this message\n\n"
         "More data features coming soon!"
     )
