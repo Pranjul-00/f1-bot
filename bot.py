@@ -93,7 +93,7 @@ SUB_TZS = {
 MAIN_MENU_KEYBOARD = ReplyKeyboardMarkup([
     ['🏎️ Next Race', '🏆 Standings'],
     ['🌍 Set Timezone', 'ℹ️ Help']
-], resize_keyboard=True, persistent=True)
+], resize_keyboard=True)
 
 async def post_init(application):
     """Set the bot's commands menu in Telegram."""
