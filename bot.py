@@ -15,6 +15,11 @@ logging.basicConfig(
     level=logging.INFO
 )
 
+# Enable cache for fastf1
+if not os.path.exists('fastf1_cache'):
+    os.makedirs('fastf1_cache')
+fastf1.Cache.enable_cache('fastf1_cache')
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send a message when the command /start is issued."""
     welcome_message = (
@@ -32,7 +37,6 @@ async def next_race(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     try:
         # Get remaining events for the current year
-        current_year = datetime.datetime.now().year
         remaining = fastf1.get_events_remaining()
         
         if remaining.empty:
@@ -48,25 +52,15 @@ async def next_race(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         schedule_text = f"📍 *Next Event: {event_name}*\n📅 Date: {event_date}\n\n*Schedule (UTC):*\n"
         
-        # Sessions to check (common ones)
-        sessions = [
-            ('Practice 1', 'Session1DateUtc'),
-            ('Practice 2', 'Session2DateUtc'),
-            ('Practice 3', 'Session3DateUtc'),
-            ('Sprint', 'Session4DateUtc'),
-            ('Qualifying', 'Session4DateUtc' if 'Qualifying' in str(next_event['Session4Name']) else 'Session5DateUtc'),
-            ('Race', 'Session5DateUtc')
-        ]
-        
         # Build the schedule string dynamically
         for i in range(1, 6):
-            name_key = f'Session{i}Name'
+            name_key = f'Session{i}'
             date_key = f'Session{i}DateUtc'
             
             if name_key in next_event and next_event[name_key]:
                 session_name = next_event[name_key]
                 session_time = next_event[date_key]
-                if session_time:
+                if session_time and not isinstance(session_time, float):  # Check if it's a valid time object
                     time_str = session_time.strftime('%a %H:%M')
                     schedule_text += f"• {session_name}: {time_str}\n"
 
@@ -77,7 +71,7 @@ async def next_race(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     except Exception as e:
-        logging.error(f"Error in /next: {e}")
+        logging.error(f"Error in /next: {e}", exc_info=True)
         await context.bot.send_message(
             chat_id=update.effective_chat.id, 
             text="Sorry, I had trouble fetching the schedule. Please try again later."
