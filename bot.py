@@ -92,8 +92,9 @@ SUB_TZS = {
 
 # Main menu keyboard
 MAIN_MENU_KEYBOARD = ReplyKeyboardMarkup([
-    ['🏎️ Next Race', '🏆 Standings'],
-    ['🌍 Set Timezone', 'ℹ️ Help']
+    ['🏎️ Next Race', '🏎️ Latest Results'],
+    ['🏆 Standings', '🌍 Set Timezone'],
+    ['ℹ️ Help']
 ], resize_keyboard=True)
 
 async def post_init(application):
@@ -101,6 +102,7 @@ async def post_init(application):
     commands = [
         BotCommand("start", "Start the bot and show menu"),
         BotCommand("next", "Get upcoming race schedule"),
+        BotCommand("results", "View last race results"),
         BotCommand("settimezone", "Search or select your timezone"),
         BotCommand("standings", "View championship standings"),
         BotCommand("help", "Show help information")
