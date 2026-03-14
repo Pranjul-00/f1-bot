@@ -6,7 +6,7 @@ import json
 from zoneinfo import ZoneInfo, available_timezones
 from rapidfuzz import process, utils
 from dotenv import load_dotenv
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, BotCommand
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, CallbackQueryHandler, MessageHandler, filters
 
 # Load environment variables from .env file
@@ -93,19 +93,31 @@ SUB_TZS = {
 MAIN_MENU_KEYBOARD = ReplyKeyboardMarkup([
     ['🏎️ Next Race', '🏆 Standings'],
     ['🌍 Set Timezone', 'ℹ️ Help']
-], resize_keyboard=True)
+], resize_keyboard=True, persistent=True)
+
+async def post_init(application):
+    """Set the bot's commands menu in Telegram."""
+    commands = [
+        BotCommand("start", "Start the bot and show menu"),
+        BotCommand("next", "Get upcoming race schedule"),
+        BotCommand("settimezone", "Search or select your timezone"),
+        BotCommand("standings", "View championship standings"),
+        BotCommand("help", "Show help information")
+    ]
+    await application.bot.set_my_commands(commands)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send a message when the command /start is issued."""
     welcome_message = (
-        "🏎️ Welcome to the F1 Bot! 🏎️\n\n"
-        "I can help you keep track of race schedules, standings, and telemetry!\n\n"
-        "Use the menu below to navigate easily without typing."
+        "🏎️ *Welcome to the F1 Bot!* 🏎️\n\n"
+        "I've added a menu at the bottom of your screen. You can now tap the buttons to navigate!\n\n"
+        "If you don't see the buttons, look for a small icon with four dots in your message bar."
     )
     await context.bot.send_message(
         chat_id=update.effective_chat.id, 
         text=welcome_message,
-        reply_markup=MAIN_MENU_KEYBOARD
+        reply_markup=MAIN_MENU_KEYBOARD,
+        parse_mode='Markdown'
     )
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -251,7 +263,7 @@ async def finalize_timezone(update: Update, tz_name: str):
     tz_abbr = now.strftime('%Z')
     
     await query.edit_message_text(
-        text=f"✅ Timezone set to *{tz_name}* ({tz_abbr}). Your `/next` results will now be localized!", 
+        text=f"✅ Timezone set to *{tz_name}* ({tz_abbr}). Your results will now be localized!", 
         parse_mode='Markdown'
     )
 
@@ -276,7 +288,9 @@ async def get_countdown(target_time):
 
 async def next_race(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Fetch and send the upcoming F1 race schedule with localization and countdown."""
-    await context.bot.send_message(chat_id=update.effective_chat.id, text="Checking the calendar... 🏁")
+    # Handle both command calls and button taps
+    chat_id = update.effective_chat.id
+    await context.bot.send_message(chat_id=chat_id, text="Checking the calendar... 🏁")
     
     try:
         user_id = str(update.effective_user.id)
@@ -287,16 +301,11 @@ async def next_race(update: Update, context: ContextTypes.DEFAULT_TYPE):
         remaining = fastf1.get_events_remaining()
         
         if remaining.empty:
-            await context.bot.send_message(
-                chat_id=update.effective_chat.id, 
-                text="The season has ended! Check back soon for the next year's schedule."
-            )
+            await context.bot.send_message(chat_id=chat_id, text="The season has ended!")
             return
 
         next_event = remaining.iloc[0]
         event_name = next_event['EventName']
-        
-        # Get the timezone abbreviation for the user
         now_in_tz = datetime.datetime.now(user_tz)
         tz_abbr = now_in_tz.strftime('%Z')
         
@@ -306,54 +315,40 @@ async def next_race(update: Update, context: ContextTypes.DEFAULT_TYPE):
         now = datetime.datetime.now(datetime.timezone.utc)
         countdown_shown = False
 
-        # Build the schedule string dynamically
         for i in range(1, 6):
             name_key = f'Session{i}'
             date_key = f'Session{i}DateUtc'
-            
             if name_key in next_event and next_event[name_key]:
                 session_name = next_event[name_key]
                 session_time_utc = next_event[date_key]
-                
                 if session_time_utc and not isinstance(session_time_utc, float):
                     if session_time_utc.tzinfo is None:
                         session_time_utc = session_time_utc.replace(tzinfo=datetime.timezone.utc)
-                    
                     local_time = session_time_utc.astimezone(user_tz)
                     time_str = local_time.strftime('%a %I:%M %p')
-                    
                     line = f"• {session_name}: {time_str}"
-                    
                     if not countdown_shown and session_time_utc > now:
                         countdown = await get_countdown(session_time_utc)
                         if countdown:
                             line += f" *(Starts in {countdown})*"
                             countdown_shown = True
-                    
                     schedule_text += line + "\n"
 
-        await context.bot.send_message(
-            chat_id=update.effective_chat.id, 
-            text=schedule_text,
-            parse_mode='Markdown'
-        )
+        await context.bot.send_message(chat_id=chat_id, text=schedule_text, parse_mode='Markdown')
 
     except Exception as e:
         logging.error(f"Error in /next: {e}", exc_info=True)
-        await context.bot.send_message(
-            chat_id=update.effective_chat.id, 
-            text="Sorry, I had trouble fetching the schedule. Please try again later."
-        )
+        await context.bot.send_message(chat_id=chat_id, text="Sorry, I had trouble fetching the schedule.")
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send a message when the command /help is issued."""
     help_text = (
         "Available commands:\n"
-        "/start - Start the bot\n"
-        "/next - Get upcoming race schedule with local times and countdown\n"
-        "/settimezone - Search for your city (e.g., `/settimezone London`) or pick a country from the list\n"
-        "/help - Show this message\n\n"
-        "You can also use the buttons below for quick access!"
+        "/start - Show the main menu keyboard\n"
+        "/next - Get upcoming race schedule\n"
+        "/settimezone - Pick or search for your timezone\n"
+        "/standings - View championship standings\n\n"
+        "You can also use the buttons below your message bar for quick access!"
     )
     await context.bot.send_message(chat_id=update.effective_chat.id, text=help_text, parse_mode='Markdown')
 
@@ -364,15 +359,13 @@ if __name__ == '__main__':
         print("Error: Please set the TELEGRAM_BOT_TOKEN in your .env file.")
         exit(1)
 
-    app = ApplicationBuilder().token(token).build()
+    app = ApplicationBuilder().token(token).post_init(post_init).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("next", next_race))
     app.add_handler(CommandHandler("settimezone", set_timezone))
     app.add_handler(CallbackQueryHandler(timezone_callback))
-    
-    # Handle the menu buttons
     app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
 
     print("Bot is starting... Press Ctrl+C to stop.")
