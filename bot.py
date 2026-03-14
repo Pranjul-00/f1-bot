@@ -6,8 +6,8 @@ import json
 from zoneinfo import ZoneInfo, available_timezones
 from rapidfuzz import process, utils
 from dotenv import load_dotenv
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, CallbackQueryHandler
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, CallbackQueryHandler, MessageHandler, filters
 
 # Load environment variables from .env file
 load_dotenv()
@@ -45,6 +45,7 @@ CLEAN_TZS = sorted([
 
 # Major F1 Countries and their primary timezones
 MAJOR_F1_COUNTRIES = {
+    "🇮🇳 India": "Asia/Kolkata",
     "🇬🇧 UK": "Europe/London",
     "🇮🇹 Italy": "Europe/Rome",
     "🇧🇷 Brazil": "America/Sao_Paulo",
@@ -88,25 +89,46 @@ SUB_TZS = {
     ]
 }
 
+# Main menu keyboard
+MAIN_MENU_KEYBOARD = ReplyKeyboardMarkup([
+    ['🏎️ Next Race', '🏆 Standings'],
+    ['🌍 Set Timezone', 'ℹ️ Help']
+], resize_keyboard=True)
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send a message when the command /start is issued."""
     welcome_message = (
         "🏎️ Welcome to the F1 Bot! 🏎️\n\n"
         "I can help you keep track of race schedules, standings, and telemetry!\n\n"
-        "Try these commands:\n"
-        "/next - Get the upcoming race schedule\n"
-        "/settimezone - Search for or select your timezone\n"
-        "/help - Show all available commands"
+        "Use the menu below to navigate easily without typing."
     )
-    await context.bot.send_message(chat_id=update.effective_chat.id, text=welcome_message)
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id, 
+        text=welcome_message,
+        reply_markup=MAIN_MENU_KEYBOARD
+    )
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle text messages from the main menu keyboard."""
+    text = update.message.text
+    if text == '🏎️ Next Race':
+        await next_race(update, context)
+    elif text == '🏆 Standings':
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="Standings feature is coming soon! 🏆")
+    elif text == '🌍 Set Timezone':
+        await set_timezone(update, context)
+    elif text == 'ℹ️ Help':
+        await help_command(update, context)
 
 async def set_timezone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Search for a timezone or show the major F1 countries menu."""
-    if context.args:
+    # Check if this was called from a command with arguments or from a button
+    args = context.args if hasattr(context, 'args') else None
+    
+    if args:
         # User is searching for a timezone (e.g., /settimezone London)
-        search_query = " ".join(context.args)
+        search_query = " ".join(args)
         
-        # Use fuzzy matching to find the best 5 matches
         matches = process.extract(
             search_query, 
             CLEAN_TZS, 
@@ -127,7 +149,7 @@ async def set_timezone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # No arguments? Show the major F1 countries menu
+    # No arguments or button tap? Show the major F1 countries menu
     keyboard = []
     countries = list(MAJOR_F1_COUNTRIES.keys())
     for i in range(0, len(countries), 2):
@@ -161,7 +183,6 @@ async def timezone_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         tz_value = MAJOR_F1_COUNTRIES[country_name]
         
         if tz_value.startswith("MULTIPLE_"):
-            # Show sub-timezone options for this country
             options = SUB_TZS[tz_value]
             keyboard = []
             for display_name, actual_tz in options:
@@ -171,7 +192,6 @@ async def timezone_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup = InlineKeyboardMarkup(keyboard)
             await query.edit_message_text(f"Select your region in {country_name}:", reply_markup=reply_markup)
         else:
-            # Single timezone country, save it immediately
             await finalize_timezone(update, tz_value)
 
     elif data == "back_to_countries":
@@ -187,7 +207,6 @@ async def timezone_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("Please select your country or search with `/settimezone City`:", reply_markup=reply_markup, parse_mode='Markdown')
 
     elif data == "back_to_regions":
-        # Fallback to the old region-based list
         regions = sorted(list(set([tz.split("/")[0] for tz in CLEAN_TZS])))
         keyboard = []
         for i in range(0, len(regions), 2):
@@ -227,7 +246,14 @@ async def finalize_timezone(update: Update, tz_name: str):
     prefs[user_id] = {'timezone': tz_name}
     save_prefs(prefs)
     
-    await query.edit_message_text(text=f"✅ Timezone set to *{tz_name}*. Your `/next` results will now be localized!", parse_mode='Markdown')
+    # Get the abbreviation (e.g., IST)
+    now = datetime.datetime.now(ZoneInfo(tz_name))
+    tz_abbr = now.strftime('%Z')
+    
+    await query.edit_message_text(
+        text=f"✅ Timezone set to *{tz_name}* ({tz_abbr}). Your `/next` results will now be localized!", 
+        parse_mode='Markdown'
+    )
 
 async def get_countdown(target_time):
     """Calculate time remaining until the target time."""
@@ -270,10 +296,12 @@ async def next_race(update: Update, context: ContextTypes.DEFAULT_TYPE):
         next_event = remaining.iloc[0]
         event_name = next_event['EventName']
         
+        # Get the timezone abbreviation for the user
+        now_in_tz = datetime.datetime.now(user_tz)
+        tz_abbr = now_in_tz.strftime('%Z')
+        
         schedule_text = f"📍 *Next Event: {event_name}*\n"
-        if user_tz_name != 'UTC':
-            schedule_text += f"🌍 Timezone: {user_tz_name}\n"
-        schedule_text += "\n"
+        schedule_text += f"🌍 Timezone: {user_tz_name} ({tz_abbr})\n\n"
         
         now = datetime.datetime.now(datetime.timezone.utc)
         countdown_shown = False
@@ -325,7 +353,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/next - Get upcoming race schedule with local times and countdown\n"
         "/settimezone - Search for your city (e.g., `/settimezone London`) or pick a country from the list\n"
         "/help - Show this message\n\n"
-        "More data features coming soon!"
+        "You can also use the buttons below for quick access!"
     )
     await context.bot.send_message(chat_id=update.effective_chat.id, text=help_text, parse_mode='Markdown')
 
@@ -343,6 +371,9 @@ if __name__ == '__main__':
     app.add_handler(CommandHandler("next", next_race))
     app.add_handler(CommandHandler("settimezone", set_timezone))
     app.add_handler(CallbackQueryHandler(timezone_callback))
+    
+    # Handle the menu buttons
+    app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
 
     print("Bot is starting... Press Ctrl+C to stop.")
     app.run_polling()
