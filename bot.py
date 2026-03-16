@@ -1,14 +1,18 @@
-import os
-import logging
-import fastf1
 import datetime
 import json
-import requests
+import logging
+import os
 from zoneinfo import ZoneInfo, available_timezones
-from rapidfuzz import process, utils
+
+import fastf1
+import requests
 from dotenv import load_dotenv
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, BotCommand
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, CallbackQueryHandler, MessageHandler, filters
+from rapidfuzz import process, utils
+from telegram import (BotCommand, InlineKeyboardButton, InlineKeyboardMarkup,
+                      ReplyKeyboardMarkup, Update)
+from telegram.ext import (ApplicationBuilder, CallbackQueryHandler,
+                          CommandHandler, ContextTypes, MessageHandler,
+                          filters)
 
 # Load environment variables from .env file
 load_dotenv()
@@ -473,5 +477,5 @@ if __name__ == '__main__':
     app.add_handler(CallbackQueryHandler(timezone_callback))
     app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
 
-    print("Bot is starting... Press Ctrl+C to stop.")
+    print("Bot is starting... Press Ctrl+C to stop!!")
     app.run_polling()
